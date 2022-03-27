@@ -12,7 +12,7 @@ Para evitar explicar en cada step el paso de abrir con r2 sample.bin, la notaci�
 
 ### 1 ¿Qué tipo de archivo es?
 
-sample.bin es un PE binario, uun ejecutable del tipo PE32 para Windows OS.
+sample.bin es un PE binario, un ejecutable del tipo PE32 para Windows OS.
 
 ### ¿Como?
 
@@ -51,7 +51,7 @@ endian little
 
 ## 3: Identificar los hashes md5, sha1 y sha256 del binario
 
-Utilizando rahash2, parte del toolset de r2 podemos sacar los siguientes hashes de sample.bin:
+Utilizando `rahash2`, parte del toolset de r2 podemos sacar los siguientes hashes de sample.bin:
 
 - md5: `c61882b6c0804f6a7e5e0ea833d9762a`
 - sha1: `02fa2bc88720eddf0f063692ed050bea841aba08`
@@ -74,7 +74,7 @@ Sí, está detectado en VT desde noviembre de 2021 como troyano, mas informació
 
 ## 5: ¿Fecha de compilación?
 
-La fecha de compilación es 11/05/2020, y la hora de compilación 01:51:39.
+La fecha de compilación es 11/05/2020, y la hora de compilación es 01:51:39.
 
 ### ¿Como?
 
@@ -83,17 +83,17 @@ La fecha de compilación es 11/05/2020, y la hora de compilación 01:51:39.
 compiled Wed Mar 11 01:51:39 2020
 ```
 
-## 6: ¿algún string de interés para identificar el tipo de programa que es?
+## 6: ¿Algún string de interés para identificar el tipo de programa que es?
 
-Por las strings que devuelve parece ser una remote shell (un troyano):
+Por las strings que devuelve parece ser una remote shell (limitada).
 Las strings que llevan a esta conclusión son:
 
-- `FOR RESEARCH PURPOSES ONLY\n`: Buen "disclaimer" en caso de qué ejecute algun tipo de ataque o intente ganar permisos.
-- `[ ] Attempting to connect to`: Indicador de qué intenta conectarse a algún destino.
+- `Attempting to connect to`: Indicador de qué intenta conectarse a algún destino.
 - `Command received:`: Indicador de qué espera recibir instrucciones.
 
 Por otro lado, si no nos limitamos a strings y revisamos imports vemos que hay algunos elementos sospechosos como `GetUserNameA`, `GetComputerNameA` o `GetCurrentDirectoryA` que indican que posiblemente no sea una remote shell completa, sino que solo permite algunas funciones.
-Juntanto esta información con la devuelta por el listado de strings es posible que este binario realize un ataque de remote shell y luego ejecuta:  "whoami", "pwd", "hostname", "disconnect".
+Es probable que este binario realice un ataque de remote shell permitiendo ejecutar:  "whoami", "pwd", "hostname", "disconnect".
+Tambien se puede intuir que la remote shell se abrirá hacia 10.0.0.121, pero en este topic ya entraremos mas adelante.
 
 ### ¿Como?
 
@@ -103,8 +103,16 @@ Juntanto esta información con la devuelta por el listado de strings es posible 
 # Listamos las strings de .rdata
 []> iz
 ...
-4   0x000a0c88 0x004a2088 31  32   .rdata  ascii   [*] FOR RESEARCH PURPOSES ONLY\n
+8   0x000a0d21 0x004a2121 29  30   .rdata  ascii   [ ] Attempting to connect to 
 ...
+11  0x000a0d69 0x004a2169 18  19   .rdata  ascii   Command received: 
+12  0x000a0d7c 0x004a217c 7   8    .rdata  ascii   whoami\n
+13  0x000a0d84 0x004a2184 4   5    .rdata  ascii   pwd\n
+14  0x000a0d89 0x004a2189 9   10   .rdata  ascii   hostname\n
+15  0x000a0d93 0x004a2193 11  12   .rdata  ascii   disconnect\n
+16  0x000a0d9f 0x004a219f 5   6    .rdata  ascii   exit\n
+...
+
 
 # Listamos los imports
 []> ia
@@ -118,7 +126,7 @@ Juntanto esta información con la devuelta por el listado de strings es posible 
 
 ## 7: ¿Alguna pista sobre el autor?
 
-Al analizar strings encontramos un link a youtube de [stryker2k2](https://www.youtube.com/channel/UCo8vV94aQsuvPrkymFcl1Yg), por lo tanto podemos pensar que el autor es stryker2k2. Si no estubiesemos en un ámbito académico deberíamos indagar mas para hacer esta información ya que podria contener este link para llevar a falsas conclusiones.
+Al analizar strings encontramos un link a youtube de [stryker2k2](https://www.youtube.com/channel/UCo8vV94aQsuvPrkymFcl1Yg), por lo tanto podemos pensar que el autor es stryker2k2. Si no estubiesemos en un ámbito académico deberíamos indagar mas alrededor de esta información, para descartar pistas falsas o que sea un "copy paste modificado".
 
 ### ¿Como?
 
@@ -129,7 +137,7 @@ Al analizar strings encontramos un link a youtube de [stryker2k2](https://www.yo
 
 ## 8: ¿Algún FQDN/IP?
 
-En las strings del binario, se encuentra harcodeada la IP `10.0.0.121`, una IP local, pero no se ha encontrado ningún FQDN que nos aporte valor.
+En las strings del binario, se encuentra harcodeada la IP `10.0.0.121`, una IP local, por otro lado, no se ha encontrado ningún FQDN que nos aporte valor.
 
 ### ¿Como?
 
@@ -146,6 +154,8 @@ En el siguiente fragmento de código pueden verse algunas de las búsquedas real
 215 0x000a2688 0x004a3a88 104 105  .rdata  ascii   not enough space for format expansion (Please submit full bug report at https://gcc.gnu.org/bugs/):\n
 ```
 
+---
+
 # Análisis Dinámico (en KALI)
 
 ## 9: ¿Trata de conectar al algún sitio?
@@ -157,15 +167,17 @@ Sí. El ejecutable intenta, como aventurabamos durante el análisis estático, c
 ### ¿Como?
 
 ```bash
-# Execute every 0'2 seconds a list of net connections
-$ watch -n 0.2 netstat -nputw
+# Shell 1: Execute binary
+wine sample.bin
+# Shell 2: Execute every 0'2 seconds a list of net connections
+watch -n 0.2 netstat -nputw
 ```
 
 ## 9.1 Modifica el binario para que conecte a localhost
 
 Una vez abierto el sample con permisos para escribir, queremos sobreescribir una variable que está en .rdata, por lo que vamos a esta sección, entramos en modo visual y sobreescribimos el valor anterior (10.0.0.121) por el de localhost `127.0.0.01`.
 
-La unica particularidad es que debemos mantener el mismo tamaño, por lo que añadimos un 0 antes del 1, que representa la misma dirección.
+Es importante mantener el length de la variable, en lugar del clásico 127.0.0.1 para indicar la IP de localhost añadimos un 0 extra 127.0.0.01 (para tener el mismo length que la IP anterior) ya que una notación y la otra son equivalentes.
 
 ### ¿Como?
 
@@ -195,7 +207,7 @@ r2 -w sample_change_ip.bin
 
 ## 10-Utiliza netcat para recibir la conexión
 
-Sabemos, porque en el análisis dinámico hemos detectado intentos de conexión salientes de sample.bin que la IP destino era 10.0.0.121 y que el puerto era 8080, por lo tanto es en este puerto en el que vamos a tener a nc escuchando.
+Sabemos, porque en el análisis dinámico hemos detectado intentos de conexión salientes de sample.bin, que la IP destino era 10.0.0.121 y que el puerto destino es 8080. Abrimos `netcat` en modo escucha en este puerto.
 
 ```bash
 # Shell 1
@@ -208,7 +220,7 @@ wine sample_change_ip.bin
 
 ## 11-Utiliza los posibles comandos sospechosos que hayas visto por strings para ver si obtienes resultados y muestra evidencia de los mismos
 
-La lista de comandos podemos obtenerlos al listar los strings o al revisar los distintos flujos en la función de "remote shell".
+Obenemos la lista de comandos al listar los strings o al revisar los distintos flujos en la función de "remote shell".
 
 Estos comandos son:
 
@@ -222,13 +234,15 @@ En la siguiente imagen se puede observar el resultado de la ejecución de los mi
 
 ![evidencia](vista_de_conexiones.png)
 
+---
+
 # Reversing
 
-## 12: localiza en el binario la función en la que se lleva a cabo la conexión y control de comandos, ¿cuál es el offset de la misma?
+## 12: Localiza en el binario la función en la que se lleva a cabo la conexión y control de comandos, ¿cuál es el offset de la misma?
 
 La función que realiza esta connexión se llama `fcn.0040150d`, tiene un tamaño de 1520 y su offset es `0x0040150d`.
 
-Sabemos que se utilizaba la función `connect` (gracias al análisis anterior), así que podemos buscar en qué partes del código se encuentra.
+Sabemos donde se llamaba a la función `connect` (gracias al análisis anterior), así que podemos buscar en qué partes del código se encuentra.
 Encontramos una sola función que llame a la dll_connect (la que suponemos para realizar la conexión) por lo tanto saltamos a ese offset y buscamos información de esa función.
 
 ### ¿Como?
@@ -250,7 +264,7 @@ offset: 0x0040150d
 
 ## 13: ¿Qué funciones de la API de windows se usan para la gestión de la conexión y envío de información de red? indica librerías y funciones. Detalla los offsets y calls de las mismas
 
-Del análisis estáticom hemos concluido que la función que realiza la conexión  `fcn.0040150d` y su offset es `0x0040150d`. Nos desplazamos a esta dirección y analizamos el código, buscando todas las instrucciones que realizen calls, que "solo" son 48 en esta función.
+Nos desplazamos al offset de la función que realiza la llamada a `connect` y analizamos el código, buscando todas las instrucciones que realizen calls, que "solo" son 48 en esta función.
 
 Las funciones que se usan son todas de la libreria Windows Sockets 2 (precisamente ideada para este tipo de acciones a través de red):
 `socket`, `connect`, `closesocket`, `WSAStartup`, `WSACleanup` para gestionar la conexión.
@@ -258,24 +272,24 @@ Las funciones que se usan son todas de la libreria Windows Sockets 2 (precisamen
 `recv`, `send` para transferir información.
 
 Informaciones (Offset, Call, info):
-| Offset | Call | Extra info |
-| --- | --- | --- |
-| 0x00401529 | call sub.WS2_32.dll_WSAStartup | int WSAStartup(WORD wVersionRequested, LPWSADATA lpWSAData) |
-| 0x00401548 | call sub.WS2_32.dll_socket | SOCKET socket(int af, int type, int protocol) |
-│ 0x00401569 | call sub.WS2_32.dll_inet_addr | unsigned long inet_addr(const char *cp) |
-│ 0x0040157e | call sub.WS2_32.dll_htons | u_short htons(u_short hostshort) |
-| 0x004015dd | call sub.WS2_32.dll_connect | int connect(SOCKET s, const sockaddr *name, int namelen) |
-| 0x004015f5 | call sub.WS2_32.dll_closesocket | int closesocket(SOCKET s) |
-| 0x004015fd | call sub.WS2_32.dll_WSACleanup | int WSACleanup(void) |
-| 0x00401692 | call sub.WS2_32.dll_recv | int recv(SOCKET s, char *buf, int len, int flags) |
-| 0x00401786 | call sub.WS2_32.dll_send | int send(SOCKET s, const char *buf, int len, int flags) |
-| 0x00401890 | call sub.WS2_32.dll_send | int send(SOCKET s, const char *buf, int len, int flags) |
-| 0x0040199a | call sub.WS2_32.dll_send | int send(SOCKET s, const char *buf, int len, int flags) |
-| 0x00401a03 | call sub.WS2_32.dll_closesocket | int closesocket(SOCKET s) |
-| 0x00401a0b | call sub.WS2_32.dll_WSACleanup | int WSACleanup(void) |
-| 0x00401a3c | call sub.WS2_32.dll_closesocket | int closesocket(SOCKET s) |
-| 0x00401a44 | call sub.WS2_32.dll_WSACleanup | int WSACleanup(void) |
-| 0x00401ab4 | call sub.WS2_32.dll_send | int send(SOCKET s, const char *buf, int len, int flags) |
+Offset     | Call                            | Extra info
+---        | ---                             | ---
+0x00401529 | call sub.WS2_32.dll_WSAStartup  | int WSAStartup(WORD wVersionRequested, LPWSADATA lpWSAData)
+0x00401548 | call sub.WS2_32.dll_socket      | SOCKET socket(int af, int type, int protocol)
+0x00401569 | call sub.WS2_32.dll_inet_addr   | unsigned long inet_addr(const char *cp)
+0x0040157e | call sub.WS2_32.dll_htons       | u_short htons(u_short hostshort)
+0x004015dd | call sub.WS2_32.dll_connect     | int connect(SOCKET s, const sockaddr *name, int namelen)
+0x004015f5 | call sub.WS2_32.dll_closesocket | int closesocket(SOCKET s)
+0x004015fd | call sub.WS2_32.dll_WSACleanup  | int WSACleanup(void)
+0x00401692 | call sub.WS2_32.dll_recv        | int recv(SOCKET s, char *buf, int len, int flags)
+0x00401786 | call sub.WS2_32.dll_send        | int send(SOCKET s, const char *buf, int len, int flags)
+0x00401890 | call sub.WS2_32.dll_send        | int send(SOCKET s, const char *buf, int len, int flags)
+0x0040199a | call sub.WS2_32.dll_send        | int send(SOCKET s, const char *buf, int len, int flags)
+0x00401a03 | call sub.WS2_32.dll_closesocket | int closesocket(SOCKET s)
+0x00401a0b | call sub.WS2_32.dll_WSACleanup  | int WSACleanup(void)
+0x00401a3c | call sub.WS2_32.dll_closesocket | int closesocket(SOCKET s)
+0x00401a44 | call sub.WS2_32.dll_WSACleanup  | int WSACleanup(void)
+0x00401ab4 | call sub.WS2_32.dll_send        | int send(SOCKET s, const char *buf, int len, int flags)
 
 ### ¿Como?
 
